@@ -2,7 +2,6 @@ package main
 import (
         "errors"
 	"flag"
-	"fmt"
 	"net"
 	"encoding/binary"
 	"net/http"
@@ -39,7 +38,6 @@ func upload(adif string) error {
 	r.Header.Add("Content-Length", strconv.Itoa(len(form.Encode())))
 	
 	res, err := client.Do(r)
-	log.Printf("Status: %v\n", res.Status)
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
@@ -67,7 +65,7 @@ func addPending(adif string, db *sql.DB) error {
 
 func send(adif string, db *sql.DB) {
 	if upload(adif)!=nil {
-	        fmt.Printf("ERROR uploading the following ADIF entry. It will be stored an uploaded the next time this program is started.\n%s\n", adif)
+	        log.Printf("ERROR uploading the following ADIF entry. It will be stored an uploaded the next time this program is started.\n%s\n", adif)
 		addPending(adif, db)
 	}
 }
@@ -82,20 +80,20 @@ func createTable(db *sql.DB) error {
 	statement.Exec()
 	return nil
 }
-
-func existsPending(db *sql.DB) bool {
-	rows, err := db.Query("SELECT COUNT(*) FROM entries")
-	if err!= nil {
-		return false
-	}
-	var count int
-	defer rows.Close()
-	for rows.Next() {
-		err = rows.Scan(&count)
-		return count > 0
-	}
-	return false
+func countPending(db *sql.DB) (int, error) {
+        rows, err := db.Query("SELECT COUNT(*) FROM entries")
+        if err!= nil {
+                return 0, err
+        }
+        var count int
+        defer rows.Close()
+        for rows.Next() {
+                err = rows.Scan(&count)
+                return count, nil
+        }
+        return 0, errors.New("Failed to retrieve backlog count")
 }
+
 
 func uploadNextPending(db *sql.DB) error {
 	rows, err := db.Query("SELECT adif FROM entries LIMIT 1")
@@ -120,18 +118,30 @@ func uploadNextPending(db *sql.DB) error {
 	}
 	_,err = stmt.Exec(adif)
 	if err != nil {
-		fmt.Printf("ERROR: log entry \n%s\ncould not be deleted from db - it may be uploaded more than once as a result", adif)
+		log.Printf("ERROR: log entry \n%s\ncould not be deleted from backlog - it may be uploaded more than once as a result", adif)
 		return err
 	}
 	return nil
 }
 
 func uploadPending(db *sql.DB) error {
-	for existsPending(db) {
-		err := uploadNextPending(db)
+        count, err := countPending(db)
+        if err != nil {
+            return err
+        }
+        if count < 1 {
+            return nil
+        }
+        log.Printf("Number of entries in backlog: %d. Attempting to upload to your QRZ logbook.\n", count)
+	for count > 0 {
+		err = uploadNextPending(db)
 		if err != nil {
 			return err
 		}
+                count, err  = countPending(db) 
+                if err != nil {
+                       return err
+                }
 	}
 	return nil
 }
@@ -145,7 +155,7 @@ func main() {
 	if _, err :=  os.Stat(*dbFile); err != nil {
 		file, err:= os.Create(*dbFile);
 		if err != nil {
-			fmt.Println("ERROR: Failed to create file")
+			log.Printf("ERROR: Failed to create file %s\n", *dbFile)
 			log.Fatal(err.Error())
 		}
 		file.Close()
@@ -181,7 +191,7 @@ func main() {
 	}
 	ser, err := net.ListenUDP("udp", &addr)
 	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
+		log.Printf("ERROR: %v\n", err)
 		return
 	}
 
@@ -189,7 +199,7 @@ func main() {
 		n, _, err := ser.ReadFromUDP(p)
 
 		if err != nil {
-			fmt.Printf("ERROR: %v", err)
+			log.Printf("ERROR: %v", err)
 			continue
 		} 
 		
@@ -199,7 +209,7 @@ func main() {
 
 		magic := binary.BigEndian.Uint32(p) 
 		if magic != 0xadbccbda {
-			fmt.Printf("ERROR: Unknown magic number: %x\n", magic)
+			log.Printf("ERROR: Unknown magic number: %x\n", magic)
 			continue
 		}
 		var offset uint32 = 8
