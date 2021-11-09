@@ -4,6 +4,12 @@ This is a little logging utility that works in conjunction with wsjtx. You start
 
 If you work offline, it will fail to upload to QRZ, and fallback to storing the logbook entries into a database file so that when you start it up again, this time connected to the network, it will send those entries over to your QRZ logbook.
  
+Building qrzlogger
+----------------
+
+1. clone this repo
+2. `cd qrzlogger`
+3. `go build`
 
 Running qrzlogger
 ----------------
