@@ -1,5 +1,6 @@
 package main
 import (
+        "errors"
 	"flag"
 	"fmt"
 	"net"
@@ -40,11 +41,16 @@ func upload(adif string) error {
 	res, err := client.Do(r)
 	log.Printf("Status: %v\n", res.Status)
 	defer res.Body.Close()
+
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		log.Printf("ERROR: %v\n", err)
 		return err
 	}
+	if !strings.Contains(string(body), "LOGID") {
+        	 return errors.New(string(body))
+	}
+	
 	log.Println(string(body))
 	return nil
 }
@@ -61,6 +67,7 @@ func addPending(adif string, db *sql.DB) error {
 
 func send(adif string, db *sql.DB) {
 	if upload(adif)!=nil {
+	        fmt.Printf("ERROR uploading the following ADIF entry. It will be stored an uploaded the next time this program is started.\n%s\n", adif)
 		addPending(adif, db)
 	}
 }
@@ -129,8 +136,6 @@ func uploadPending(db *sql.DB) error {
 	return nil
 }
 
-
-
 func main() {
 
 	flag.Parse()
@@ -163,7 +168,7 @@ func main() {
 	err = uploadPending(db)
 	
 	if err != nil {
-		log.Fatal(err.Error())
+	     log.Printf("Unable to upload pending entries at this time.\n")
 	}
 	
 	log.Printf("Reading from %s:%d\n", *ip, *port)
