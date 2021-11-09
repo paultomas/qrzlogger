@@ -23,3 +23,9 @@ Running qrzlogger
     	API key
     -p int
     	port (default 2237)
+
+You need to have a QRZ subscription and an API key. A typical invocation:
+
+    ./qrzlogger -k <your-API-key>
+
+
