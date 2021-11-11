@@ -67,7 +67,7 @@ func addPending(adif string, db *sql.DB) error {
 
 func send(adif string, db *sql.DB) {
 	if upload(adif)!=nil {
-	        log.Printf("ERROR uploading the following ADIF entry. It will be stored an uploaded the next time this program is started.\n%s\n", adif)
+	        log.Printf("ERROR uploading the following ADIF entry. It will be stored for now, and then uploaded the next time this program is started.\n%s\n", adif)
 		err := addPending(adif, db)
                 if err!= nil {
                    log.Println(err.Error())
