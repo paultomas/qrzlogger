@@ -1,6 +1,7 @@
 package main
 import (
         "errors"
+        "path/filepath"
 	"flag"
 	"net"
 	"encoding/binary"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"log"
 	"os"
+        "os/user"
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 ) 
@@ -20,7 +22,7 @@ const logBookUrl = "https://logbook.qrz.com/api"
 var port = flag.Int("p", 2237, "port")
 var ip = flag.String("h", "0.0.0.0", "host ip")
 var key = flag.String("k", "", "API key")
-var dbFile = flag.String("d", ".qrzlogger.sqlite3", "Database file")
+var dbFile = flag.String("d", "~/.qrzlogger.sqlite3", "Database file")
 
 func upload(adif string) error {
 	form := url.Values{}
@@ -146,23 +148,36 @@ func uploadPending(db *sql.DB) error {
 	return nil
 }
 
+func create(p string) (*os.File, error) {
+    if err := os.MkdirAll(filepath.Dir(p), 0770); err != nil {
+         return nil, err
+    }
+    return os.Create(p)
+}
 func main() {
 
 	flag.Parse()
 	if len(*key) < 1 {
 		log.Fatal("API key must be provided (-k option)")
 	}
-	if _, err :=  os.Stat(*dbFile); err != nil {
-		file, err:= os.Create(*dbFile);
+        usr, _ := user.Current()
+        homeDir := usr.HomeDir
+
+        theDbFile := *dbFile
+        if strings.HasPrefix(*dbFile, "~/") {
+            theDbFile = filepath.Join(homeDir, (*dbFile)[2:]) 
+        }
+	if _, err :=  os.Stat(theDbFile); err != nil {
+		file, err:= create(theDbFile)
 		if err != nil {
-			log.Printf("ERROR: Failed to create file %s\n", *dbFile)
+			log.Printf("ERROR: Failed to create file %s\n", theDbFile)
 			log.Fatal(err.Error())
 		}
 		file.Close()
 	}
 
 
-	db, err:= sql.Open("sqlite3", *dbFile)
+	db, err:= sql.Open("sqlite3", theDbFile)
 
 	if err != nil {
 		log.Fatal(err.Error())
