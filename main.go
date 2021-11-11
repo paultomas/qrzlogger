@@ -50,7 +50,7 @@ func upload(adif string) error {
 	if !strings.Contains(string(body), "LOGID") {
         	 return errors.New(string(body))
 	}
-	
+        log.Printf("Logged:\n%s\n", adif)	
 	log.Println(string(body))
 	return nil
 }
