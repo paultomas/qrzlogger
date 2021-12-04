@@ -22,15 +22,16 @@ import (
 
 const logBookUrl = "https://logbook.qrz.com/api"
 
+var key string
 var port = flag.Int("p", 2237, "port")
 var ip = flag.String("h", "0.0.0.0", "host ip")
-var key = flag.String("k", "", "API key")
+//var key = flag.String("k", "", "API key")
 var dbFile = flag.String("d", "~/.qrzlogger.sqlite3", "Database file")
 
 func upload(adif string) error {
 	form := url.Values{}
 	form.Set("ACTION", "INSERT")
-	form.Set("KEY", *key)
+	form.Set("KEY", key)
 	form.Set("ADIF", adif)
 	client := &http.Client{}
 	r, err := http.NewRequest("POST", logBookUrl, strings.NewReader(form.Encode()))
@@ -202,8 +203,9 @@ func listen(con *net.UDPConn, c chan<- string) {
 func main() {
 
 	flag.Parse()
-	if len(*key) < 1 {
-		log.Fatal("API key must be provided (-k option)")
+        key = os.Getenv("QRZ_KEY")
+	if len(key) < 1 {
+		log.Fatal("API key must be provided via the QRZ_KEY environment variable") 
 	}
 	usr, _ := user.Current()
 	homeDir := usr.HomeDir
