@@ -25,15 +25,21 @@ Running qrzlogger
     	Database file (default "~/.qrzlogger.sqlite3")
     -h string
     	host ip (default "0.0.0.0")
-    -k string
-    	API key
     -p int
     	port (default 2237)
 
-You need to have a QRZ subscription and an API key. A typical invocation:
+You need to have a QRZ subscription and an API key.
 
-    ./qrzlogger -k <your-API-key>
+Set the environment variable QRZ_KEY to your API key.
 
+E.g. a typical invocation (Linux/macOS):
+    export QRZ_KEY=<your-API-key>
+    ./qrzlogger
+
+Windows:
+    set QRZ_KEY=<your-API-key>
+    qrzlogger
+    
 
 You can use:
     
