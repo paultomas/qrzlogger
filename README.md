@@ -33,10 +33,11 @@ You need to have a QRZ subscription and an API key.
 Set the environment variable QRZ_KEY to your API key.
 
 E.g. a typical invocation (Linux/macOS):
-    export QRZ_KEY=<your-API-key>
-    ./qrzlogger
+
+    QRZ_KEY=<your-API-key> ./qrzlogger
 
 Windows:
+
     set QRZ_KEY=<your-API-key>
     qrzlogger
     
