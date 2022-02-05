@@ -20,13 +20,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const logBookUrl = "https://logbook.qrz.com/api"
+const LOGBOOK_URL = "https://logbook.qrz.com/api"
 
 var key string
 var port = flag.Int("p", 2237, "port")
 var ip = flag.String("h", "0.0.0.0", "host ip")
-
-//var key = flag.String("k", "", "API key")
 var dbFile = flag.String("d", "~/.qrzlogger.sqlite3", "Database file")
 
 func upload(adif string) error {
@@ -35,7 +33,7 @@ func upload(adif string) error {
 	form.Set("KEY", key)
 	form.Set("ADIF", adif)
 	client := &http.Client{}
-	r, err := http.NewRequest("POST", logBookUrl, strings.NewReader(form.Encode()))
+	r, err := http.NewRequest("POST", LOGBOOK_URL, strings.NewReader(form.Encode()))
 
 	if err != nil {
 		log.Printf("ERROR: %v\n", err)
@@ -45,6 +43,9 @@ func upload(adif string) error {
 	r.Header.Add("Content-Length", strconv.Itoa(len(form.Encode())))
 
 	res, err := client.Do(r)
+	if err != nil {
+		return err
+	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
@@ -92,8 +93,8 @@ func createTable(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	statement.Exec()
-	return nil
+	_, err = statement.Exec()
+	return err
 }
 func countPending(db *sql.DB) (int, error) {
 	rows, err := db.Query("SELECT COUNT(*) FROM entries")
@@ -104,13 +105,16 @@ func countPending(db *sql.DB) (int, error) {
 	defer rows.Close()
 	for rows.Next() {
 		err = rows.Scan(&count)
-		return count, nil
+		return count, err
 	}
-	return 0, errors.New("Failed to retrieve backlog count")
+	return 0, errors.New("failed to retrieve backlog count")
 }
 
 func uploadNextPending(db *sql.DB) error {
 	rows, err := db.Query("SELECT adif FROM entries LIMIT 1")
+	if err != nil {
+		return err
+	}
 	var adif string
 
 	if !rows.Next() {
