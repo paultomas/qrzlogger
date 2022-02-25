@@ -1,32 +1,25 @@
 package main
+
 import (
 	"database/sql"
 	"os"
 	"os/user"
 	"path/filepath"
-	"strings"	
-	
+	"strings"
 )
+
 type Backlog interface {
 	Store(adif string) error
 	Fetch() ([]string, error)
 	Remove(adif string) error
-	Close() 
+	Close()
 }
 type backlogDb struct {
 	db *sql.DB
-	insertStmt *sql.Stmt
-	deleteStmt *sql.Stmt
 }
 
 func ensureTable(db *sql.DB) error {
-	createTableSQL := `CREATE TABLE IF NOT EXISTS entries ( "adif" TEXT);`
-
-	statement, err := db.Prepare(createTableSQL)
-	if err != nil {
-		return err
-	}
-	_, err = statement.Exec()
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS entries ( "adif" TEXT);`)
 	return err
 }
 
@@ -66,29 +59,20 @@ func newBacklogDb(spec string) (*backlogDb, error) {
 	if err != nil {
 		return nil, err
 	}
-	istmt, err := db.Prepare("INSERT INTO entries(adif) values(?)")
-	if err != nil {
-		return nil, err
-	}
-	dstmt, err := db.Prepare("DELETE FROM entries WHERE adif=?")
-	if err != nil {
-		return nil, err
-	}
-	
-	return &backlogDb{db:db, insertStmt: istmt, deleteStmt: dstmt }, nil
+
+	return &backlogDb{db: db}, nil
 }
 
-
 func (b backlogDb) Store(adif string) error {
-	_, err := b.insertStmt.Exec(adif)
+	_, err := b.db.Exec("INSERT INTO entries(adif) values(?)", adif)
 	return err
 }
 func (b backlogDb) Remove(adif string) error {
-	_, err := b.deleteStmt.Exec(adif)
+	_, err := b.db.Exec("DELETE FROM entries WHERE adif=?", adif)
 	return err
 }
 func (b backlogDb) Fetch() ([]string, error) {
-	var adifs []string	
+	var adifs []string
 	rows, err := b.db.Query("SELECT adif FROM entries")
 	if err != nil {
 		return adifs, err
@@ -108,4 +92,3 @@ func (b backlogDb) Fetch() ([]string, error) {
 func (b backlogDb) Close() {
 	b.db.Close()
 }
-
