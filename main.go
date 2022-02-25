@@ -9,8 +9,6 @@ import (
 	"sync"
 )
 
-const LOGBOOK_URL = "https://logbook.qrz.com/api"
-
 var key string
 var port = flag.Int("p", 2237, "port")
 var ip = flag.String("h", "0.0.0.0", "host ip")

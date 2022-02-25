@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const LOGBOOK_URL = "https://logbook.qrz.com/api"
+
 func upload(adif string) error {
 	form := url.Values{}
 	form.Set("ACTION", "INSERT")
