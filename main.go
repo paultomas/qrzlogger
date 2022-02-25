@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/binary"
 	"errors"
 	"flag"
@@ -11,8 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/user"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,115 +58,50 @@ func upload(adif string) error {
 	return nil
 }
 
-func addPending(adif string, db *sql.DB) error {
-	stmt, err := db.Prepare("INSERT INTO entries(adif) values(?)")
-	if err != nil {
-		return err
+func addPending(inChan <- chan string, backlog Backlog, sendCh chan <- string ) {
+	for {
+		adif := <- inChan
+		err := backlog.Store(adif)
+		if err != nil {
+			log.Printf("ERROR storing entry in backlog: %v. \nEntry: \n%s", err, adif)
+		}
+		sendCh <- adif
 	}
-	_, err = stmt.Exec(adif)
-
-	return err
 }
 
-func send(db *sql.DB, ch <-chan string) {
+func send(backlog Backlog, ch <-chan string) {
 	for {
 		adif := <-ch
+		
 		if upload(adif) != nil {
-			log.Printf("ERROR uploading the following ADIF entry. It will be stored for now, and then uploaded the next time this program is started.\n%s\n", adif)
-			err := addPending(adif, db)
+			log.Printf("ERROR uploading the following ADIF entry. It will remain in the backlog, and will be uploaded the next time this program is started.\n%s\n", adif)
+		} else {
+			err := backlog.Remove(adif)
 			if err != nil {
-				log.Println(err.Error())
-				log.Printf("Failed to capture ADIF entry. It is printed here so that you can enter it manually:\n%s\n", adif)
+				log.Printf("ERROR: log entry \n%s\ncould not be removed from backlog - it may be uploaded more than once as a result", adif)
+
 			}
+
 		}
 	}
-
 }
 
-func createTable(db *sql.DB) error {
-	createTableSQL := `CREATE TABLE IF NOT EXISTS entries ( "adif" TEXT);`
-
-	statement, err := db.Prepare(createTableSQL)
+func primeUpload(backlog Backlog, c chan<- string) error {
+	entries, err := backlog.Fetch()
 	if err != nil {
 		return err
 	}
-	_, err = statement.Exec()
-	return err
-}
-func countPending(db *sql.DB) (int, error) {
-	rows, err := db.Query("SELECT COUNT(*) FROM entries")
-	if err != nil {
-		return 0, err
-	}
-	var count int
-	defer rows.Close()
-	for rows.Next() {
-		err = rows.Scan(&count)
-		return count, err
-	}
-	return 0, errors.New("failed to retrieve backlog count")
-}
-
-func uploadNextPending(db *sql.DB) error {
-	rows, err := db.Query("SELECT adif FROM entries LIMIT 1")
-	if err != nil {
-		return err
-	}
-	var adif string
-
-	if !rows.Next() {
+	if len(entries) < 0 {
 		return nil
 	}
-	err = rows.Scan(&adif)
-	if err != nil {
-		return err
-	}
-	rows.Close()
-	err = upload(adif)
-	if err != nil {
-		return err
-	}
-
-	stmt, err := db.Prepare("DELETE FROM entries WHERE adif=?")
-	if err != nil {
-		return err
-	}
-	_, err = stmt.Exec(adif)
-	if err != nil {
-		log.Printf("ERROR: log entry \n%s\ncould not be deleted from backlog - it may be uploaded more than once as a result", adif)
-		return err
+	
+	log.Printf("Entries found in backlog: %d.\n", len(entries))
+	for _, adif := range(entries) {
+		c <- adif
 	}
 	return nil
 }
 
-func uploadPending(db *sql.DB) error {
-	count, err := countPending(db)
-	if err != nil {
-		return err
-	}
-	if count < 1 {
-		return nil
-	}
-	log.Printf("Number of entries in backlog: %d. Attempting to upload to your QRZ logbook.\n", count)
-	for count > 0 {
-		err = uploadNextPending(db)
-		if err != nil {
-			return err
-		}
-		count, err = countPending(db)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func create(p string) (*os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(p), 0770); err != nil {
-		return nil, err
-	}
-	return os.Create(p)
-}
 
 func listen(con *net.UDPConn, c chan<- string) {
 
@@ -205,6 +137,8 @@ func listen(con *net.UDPConn, c chan<- string) {
 		}
 	}
 }
+
+
 func main() {
 
 	flag.Parse()
@@ -212,44 +146,31 @@ func main() {
 	if len(key) < 1 {
 		log.Fatal("API key must be provided via the QRZ_KEY environment variable")
 	}
-	usr, _ := user.Current()
-	homeDir := usr.HomeDir
 
-	theDbFile := *dbFile
-	if strings.HasPrefix(*dbFile, "~/") {
-		theDbFile = filepath.Join(homeDir, (*dbFile)[2:])
-	}
-	if _, err := os.Stat(theDbFile); err != nil {
-		file, err := create(theDbFile)
-		if err != nil {
-			log.Printf("ERROR: Failed to create file %s\n", theDbFile)
-			log.Fatal(err.Error())
-		}
-		file.Close()
-	}
-
-	db, err := sql.Open("sqlite3", theDbFile)
+	backlog, err := newBacklogDb(*dbFile)
 
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	defer db.Close()
+	defer backlog.Close()
 
-	err = createTable(db)
+	sendCh := make(chan string)
+	
+	go send(backlog, sendCh)
+
+	err = primeUpload(backlog, sendCh)
+
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Printf("ERROR: could not process backlog at this time %v\n", err)
+		return
 	}
+	
+	pendingCh := make(chan string)
 
-	err = uploadPending(db)
-
-	if err != nil {
-		log.Printf("Unable to upload pending entries at this time.\n")
-	}
-
+	go addPending(pendingCh, backlog, sendCh)
+	
 	log.Printf("Reading from %s:%d\n", *ip, *port)
-
-	ch := make(chan string)
 
 	addr := net.UDPAddr{
 		Port: *port,
@@ -263,7 +184,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go listen(ser, ch)
-	go send(db, ch)
+	go listen(ser, pendingCh)
+
 	wg.Wait()
 }
