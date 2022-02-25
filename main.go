@@ -2,16 +2,10 @@ package main
 
 import (
 	"encoding/binary"
-	"errors"
 	"flag"
-	"io/ioutil"
 	"log"
 	"net"
-	"net/http"
-	"net/url"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -25,41 +19,7 @@ var ip = flag.String("h", "0.0.0.0", "host ip")
 var dbFile = flag.String("d", "~/.qrzlogger.sqlite3", "Database file")
 var offline = flag.Bool("offline", false, "Run in offline mode")
 
-func upload(adif string) error {
-	form := url.Values{}
-	form.Set("ACTION", "INSERT")
-	form.Set("KEY", key)
-	form.Set("ADIF", adif)
-	client := &http.Client{}
-	r, err := http.NewRequest("POST", LOGBOOK_URL, strings.NewReader(form.Encode()))
-
-	if err != nil {
-		log.Printf("ERROR: %v\n", err)
-		return err
-	}
-	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	r.Header.Add("Content-Length", strconv.Itoa(len(form.Encode())))
-
-	res, err := client.Do(r)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		log.Printf("ERROR: %v\n", err)
-		return err
-	}
-	if !strings.Contains(string(body), "LOGID") {
-		return errors.New(string(body))
-	}
-	log.Printf("Logged:\n%s\n", adif)
-	log.Println(string(body))
-	return nil
-}
-
-func addPending(inChan <-chan string, backlog Backlog, sendCh chan<- string) {
+func pushToBacklog(inChan <-chan string, backlog Backlog, sendCh chan<- string) {
 	for {
 		adif := <-inChan
 		err := backlog.Store(adif)
@@ -89,7 +49,7 @@ func send(backlog Backlog, ch <-chan string, offline bool) {
 	}
 }
 
-func primeUpload(backlog Backlog, c chan<- string) error {
+func processBacklog(backlog Backlog, c chan<- string) error {
 	entries, err := backlog.Fetch()
 	if err != nil {
 		return err
@@ -164,7 +124,7 @@ func main() {
 	go send(backlog, sendCh, *offline)
 
 	if !*offline {
-		err = primeUpload(backlog, sendCh)
+		err = processBacklog(backlog, sendCh)
 	}
 
 	if err != nil {
@@ -174,9 +134,9 @@ func main() {
 
 	pendingCh := make(chan string)
 
-	go addPending(pendingCh, backlog, sendCh)
+	go pushToBacklog(pendingCh, backlog, sendCh)
 
-	log.Printf("Reading from %s:%d\n", *ip, *port)
+	log.Printf("Listening on %s:%d\n", *ip, *port)
 
 	addr := net.UDPAddr{
 		Port: *port,
