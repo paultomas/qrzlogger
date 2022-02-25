@@ -23,6 +23,7 @@ var key string
 var port = flag.Int("p", 2237, "port")
 var ip = flag.String("h", "0.0.0.0", "host ip")
 var dbFile = flag.String("d", "~/.qrzlogger.sqlite3", "Database file")
+var offline = flag.Bool("offline", false, "Run in offline mode")
 
 func upload(adif string) error {
 	form := url.Values{}
@@ -58,9 +59,9 @@ func upload(adif string) error {
 	return nil
 }
 
-func addPending(inChan <- chan string, backlog Backlog, sendCh chan <- string ) {
+func addPending(inChan <-chan string, backlog Backlog, sendCh chan<- string) {
 	for {
-		adif := <- inChan
+		adif := <-inChan
 		err := backlog.Store(adif)
 		if err != nil {
 			log.Printf("ERROR storing entry in backlog: %v. \nEntry: \n%s", err, adif)
@@ -69,10 +70,12 @@ func addPending(inChan <- chan string, backlog Backlog, sendCh chan <- string ) 
 	}
 }
 
-func send(backlog Backlog, ch <-chan string) {
+func send(backlog Backlog, ch <-chan string, offline bool) {
 	for {
 		adif := <-ch
-		
+		if offline {
+			continue
+		}
 		if upload(adif) != nil {
 			log.Printf("ERROR uploading the following ADIF entry. It will remain in the backlog, and will be uploaded the next time this program is started.\n%s\n", adif)
 		} else {
@@ -91,17 +94,16 @@ func primeUpload(backlog Backlog, c chan<- string) error {
 	if err != nil {
 		return err
 	}
-	if len(entries) < 0 {
+	if len(entries) < 1 {
 		return nil
 	}
-	
+
 	log.Printf("Entries found in backlog: %d.\n", len(entries))
-	for _, adif := range(entries) {
+	for _, adif := range entries {
 		c <- adif
 	}
 	return nil
 }
-
 
 func listen(con *net.UDPConn, c chan<- string) {
 
@@ -138,7 +140,6 @@ func listen(con *net.UDPConn, c chan<- string) {
 	}
 }
 
-
 func main() {
 
 	flag.Parse()
@@ -156,20 +157,25 @@ func main() {
 	defer backlog.Close()
 
 	sendCh := make(chan string)
-	
-	go send(backlog, sendCh)
 
-	err = primeUpload(backlog, sendCh)
+	if *offline {
+		log.Printf("Running in offline mode\n")
+	}
+	go send(backlog, sendCh, *offline)
+
+	if !*offline {
+		err = primeUpload(backlog, sendCh)
+	}
 
 	if err != nil {
 		log.Printf("ERROR: could not process backlog at this time %v\n", err)
 		return
 	}
-	
+
 	pendingCh := make(chan string)
 
 	go addPending(pendingCh, backlog, sendCh)
-	
+
 	log.Printf("Reading from %s:%d\n", *ip, *port)
 
 	addr := net.UDPAddr{
