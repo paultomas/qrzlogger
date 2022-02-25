@@ -6,6 +6,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Backlog interface {

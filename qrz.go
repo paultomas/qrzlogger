@@ -2,13 +2,14 @@ package main
 
 import (
 	"errors"
-	"log"	
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 )
+
 func upload(adif string) error {
 	form := url.Values{}
 	form.Set("ACTION", "INSERT")
