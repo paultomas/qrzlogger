@@ -7,8 +7,6 @@ import (
 	"net"
 	"os"
 	"sync"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 const LOGBOOK_URL = "https://logbook.qrz.com/api"
