@@ -20,7 +20,7 @@ func pushToBacklog(inChan <-chan string, backlog Backlog, sendCh chan<- string) 
 		adif := <-inChan
 		err := backlog.Store(adif)
 		if err != nil {
-			log.Printf("ERROR storing entry in backlog: %v. \nEntry: \n%s", err, adif)
+			log.Printf("ERROR: storing entry in backlog: %v. \nEntry: \n%s", err, adif)
 		}
 		sendCh <- adif
 	}
@@ -33,7 +33,7 @@ func send(backlog Backlog, ch <-chan string, offline bool) {
 			continue
 		}
 		if upload(adif) != nil {
-			log.Printf("ERROR uploading the following ADIF entry. It will remain in the backlog, and will be uploaded the next time this program is started.\n%s\n", adif)
+			log.Printf("ERROR: uploading the following ADIF entry. It will remain in the backlog, and will be uploaded the next time this program is started.\n%s\n", adif)
 		} else {
 			err := backlog.Remove(adif)
 			if err != nil {
