@@ -12,7 +12,7 @@ import (
 var key string
 var port = flag.Int("p", 2237, "port")
 var ip = flag.String("h", "0.0.0.0", "host ip")
-var dbFile = flag.String("d", "~/.qrzlogger.sqlite3", "Database file")
+var dbFile = flag.String("d", "~/.qrzlogger", "backlog file")
 var offline = flag.Bool("offline", false, "Run in offline mode")
 
 func pushToBacklog(inChan <-chan string, backlog Backlog, sendCh chan<- string) {
@@ -104,7 +104,7 @@ func main() {
 		log.Fatal("API key must be provided via the QRZ_KEY environment variable")
 	}
 
-	backlog, err := newBacklogDb(*dbFile)
+	backlog, err := newBacklogFile(*dbFile)
 
 	if err != nil {
 		log.Fatal(err.Error())

@@ -1,13 +1,12 @@
 package main
 
 import (
-	"database/sql"
+	"bufio"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type Backlog interface {
@@ -16,13 +15,8 @@ type Backlog interface {
 	Remove(adif string) error
 	Close()
 }
-type backlogDb struct {
-	db *sql.DB
-}
-
-func ensureTable(db *sql.DB) error {
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS entries ( "adif" TEXT);`)
-	return err
+type backlogFile struct {
+	file string
 }
 
 func create(p string) (*os.File, error) {
@@ -32,7 +26,7 @@ func create(p string) (*os.File, error) {
 	return os.Create(p)
 }
 
-func openDb(dbFile string) (*sql.DB, error) {
+func openFile(dbFile string) (string, error) {
 	usr, _ := user.Current()
 	homeDir := usr.HomeDir
 
@@ -42,55 +36,80 @@ func openDb(dbFile string) (*sql.DB, error) {
 	if _, err := os.Stat(dbFile); err != nil {
 		file, err := create(dbFile)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		file.Close()
 	}
 
-	db, err := sql.Open("sqlite3", dbFile)
-	return db, err
+	return dbFile, nil
 
 }
 
-func newBacklogDb(spec string) (*backlogDb, error) {
-	db, err := openDb(spec)
-	if err != nil {
-		return nil, err
-	}
-	err = ensureTable(db)
+func newBacklogFile(spec string) (*backlogFile, error) {
+	filename, err := openFile(spec)
 	if err != nil {
 		return nil, err
 	}
 
-	return &backlogDb{db: db}, nil
+	return &backlogFile{file: filename}, nil
 }
 
-func (b backlogDb) Store(adif string) error {
-	_, err := b.db.Exec("INSERT INTO entries(adif) values(?)", adif)
-	return err
-}
-func (b backlogDb) Remove(adif string) error {
-	_, err := b.db.Exec("DELETE FROM entries WHERE adif=?", adif)
-	return err
-}
-func (b backlogDb) Fetch() ([]string, error) {
-	var adifs []string
-	rows, err := b.db.Query("SELECT adif FROM entries")
+func (b backlogFile) Store(adif string) error {
+	f, err := os.OpenFile(b.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return adifs, err
+		return err
 	}
-	defer rows.Close()
+	defer f.Close()
+	_, err = f.WriteString(adif + "\n")
+	return err
+}
 
-	for rows.Next() {
-		var adif string
-		err = rows.Scan(&adif)
-		if err != nil {
-			return adifs, err
+func (b backlogFile) Remove(adif string) error {
+	lines, err := b.Fetch()
+
+	f, err := os.OpenFile(b.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	for _, line := range lines {
+		if line == adif {
+			continue
 		}
-		adifs = append(adifs, adif)
+		_, err = f.WriteString(line + "\n")
+		if err != nil {
+			return err
+		}
 	}
-	return adifs, nil
+
+	return nil
 }
-func (b backlogDb) Close() {
-	b.db.Close()
+
+func (b backlogFile) Fetch() ([]string, error) {
+	f, err := os.Open(b.file)
+	if err != nil {
+		fmt.Errorf("could not open file: %s", err.Error())
+		return nil, err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	lines := make([]string, 0)
+
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err = scanner.Err(); err != nil {
+		fmt.Errorf("scanner error: %s", err.Error())
+		f.Close()
+		return nil, err
+	}
+	f.Close()
+	return lines, err
+}
+
+func (b backlogFile) Close() {
+
 }
