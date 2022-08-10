@@ -79,6 +79,7 @@ func (b backlogFile) Remove(adif string) error {
 		if line == adif {
 			continue
 		}
+
 		_, err = f.WriteString(line + "\n")
 		if err != nil {
 			return err
@@ -91,20 +92,31 @@ func (b backlogFile) Remove(adif string) error {
 func (b backlogFile) Fetch() ([]string, error) {
 	f, err := os.Open(b.file)
 	if err != nil {
-		fmt.Errorf("could not open file: %s", err.Error())
+		fmt.Printf("could not open file: %s", err.Error())
 		return nil, err
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	lines := make([]string, 0)
 
+	adif := ""
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		t := scanner.Text()
+		if len(t) < 1 {
+			continue
+		}
+		if strings.HasPrefix(t, "<adif_ver") {
+			if len(adif) > 0 {
+				lines = append(lines, adif)
+			}
+			adif = t
+			continue
+		} else if len(adif) > 0 {
+			adif = adif + t
+		}
 	}
-	if err = scanner.Err(); err != nil {
-		fmt.Errorf("scanner error: %s", err.Error())
-		f.Close()
-		return nil, err
+	if len(adif) > 0 {
+		lines = append(lines, adif)
 	}
 	f.Close()
 	return lines, err
