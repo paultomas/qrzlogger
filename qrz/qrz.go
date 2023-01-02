@@ -1,5 +1,4 @@
-package main
-
+package qrz
 import (
 	"errors"
 	"io/ioutil"
@@ -12,10 +11,18 @@ import (
 
 const LOGBOOK_URL = "https://logbook.qrz.com/api"
 
-func upload(adif string) error {
+type Client struct {
+	key string
+}
+
+func NewClient(key string) *Client {
+	return &Client{key: key}
+}
+
+func (c *Client) Upload(adif string) error {
 	form := url.Values{}
 	form.Set("ACTION", "INSERT")
-	form.Set("KEY", key)
+	form.Set("KEY", c.key)
 	form.Set("ADIF", adif)
 	client := &http.Client{}
 	r, err := http.NewRequest("POST", LOGBOOK_URL, strings.NewReader(form.Encode()))

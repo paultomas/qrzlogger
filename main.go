@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/paultomas/qrzlogger/qrz"
 	"encoding/binary"
 	"flag"
 	"log"
@@ -26,13 +27,13 @@ func pushToBacklog(inChan <-chan string, backlog Backlog, sendCh chan<- string) 
 	}
 }
 
-func send(backlog Backlog, ch <-chan string, offline bool) {
+func send(backlog Backlog, client *qrz.Client, ch <-chan string, offline bool) {
 	for {
 		adif := <-ch
 		if offline {
 			continue
 		}
-		if upload(adif) != nil {
+		if client.Upload(adif) != nil {
 			log.Printf("ERROR: uploading the following ADIF entry. It will remain in the backlog, and will be uploaded the next time this program is started.\n%s\n", adif)
 		} else {
 			err := backlog.Remove(adif)
@@ -104,6 +105,7 @@ func main() {
 		log.Fatal("API key must be provided via the QRZ_KEY environment variable")
 	}
 
+	qrzClient := qrz.NewClient(key)
 	backlog, err := newBacklogFile(*dbFile)
 
 	if err != nil {
@@ -117,7 +119,7 @@ func main() {
 	if *offline {
 		log.Printf("Running in offline mode\n")
 	}
-	go send(backlog, sendCh, *offline)
+	go send(backlog, qrzClient, sendCh, *offline)
 
 	if !*offline {
 		err = processBacklog(backlog, sendCh)
