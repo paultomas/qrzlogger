@@ -33,10 +33,12 @@ func send(backlog Backlog, client *qrz.Client, ch <-chan string, offline bool) {
 		if offline {
 			continue
 		}
-		if client.Upload(adif) != nil {
+		err := client.Upload(adif)
+		if err != nil && err != qrz.ErrAlreadyExists {
 			log.Printf("ERROR: uploading the following ADIF entry. It will remain in the backlog, and will be uploaded the next time this program is started.\n%s\n", adif)
+			log.Printf("ERROR: %s\n", err)
 		} else {
-			err := backlog.Remove(adif)
+			err = backlog.Remove(adif)
 			if err != nil {
 				log.Printf("ERROR: log entry \n%s\ncould not be removed from backlog - it may be uploaded more than once as a result", adif)
 

@@ -67,7 +67,7 @@ func (b backlogFile) Store(adif string) error {
 func (b backlogFile) Remove(adif string) error {
 	lines, err := b.Fetch()
 
-	f, err := os.OpenFile(b.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(b.file, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 
 	if err != nil {
 		return err

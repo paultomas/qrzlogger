@@ -10,6 +10,7 @@ import (
 )
 
 const LOGBOOK_URL = "https://logbook.qrz.com/api"
+var ErrAlreadyExists = errors.New("duplicate entry")
 
 type Client struct {
 	key string
@@ -45,8 +46,12 @@ func (c *Client) Upload(adif string) error {
 		log.Printf("ERROR: %v\n", err)
 		return err
 	}
-	if !strings.Contains(string(body), "LOGID") {
-		return errors.New(string(body))
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "LOGID") {
+	   if strings.Contains(bodyStr, "&REASON=Unable to add QSO to database: duplicate") {
+               return ErrAlreadyExists
+	   }
+	   return errors.New(string(body))
 	}
 	log.Printf("Logged:\n%s\n", adif)
 	log.Println(string(body))
