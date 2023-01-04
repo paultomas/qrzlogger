@@ -10,13 +10,16 @@ import (
 )
 
 type Backlog interface {
-	Store(adif string) error
-	Fetch() ([]string, error)
-	Remove(adif string) error
-	Close()
+	Load() error
+	Save() error
+	Entries() []string
+	Remove(adif string)
+	Add(adif string) 
 }
-type backlogFile struct {
+type backlogImpl struct {
 	file string
+	entries []string
+	dirty bool 
 }
 
 func create(p string) (*os.File, error) {
@@ -26,7 +29,7 @@ func create(p string) (*os.File, error) {
 	return os.Create(p)
 }
 
-func openFile(dbFile string) (string, error) {
+func ensureFile(dbFile string) (string, error) {
 	usr, _ := user.Current()
 	homeDir := usr.HomeDir
 
@@ -45,28 +48,45 @@ func openFile(dbFile string) (string, error) {
 
 }
 
-func newBacklogFile(spec string) (*backlogFile, error) {
-	filename, err := openFile(spec)
+func NewBacklog(spec string) (*backlogImpl, error) {
+	filename, err := ensureFile(spec)
 	if err != nil {
 		return nil, err
 	}
-
-	return &backlogFile{file: filename}, nil
+	entries := make([]string,0)
+	return &backlogImpl{file: filename, entries: entries}, nil
 }
 
-func (b backlogFile) Store(adif string) error {
-	f, err := os.OpenFile(b.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
+func (b *backlogImpl) Add(adif string) {
+	b.entries = append(b.entries, adif)
+	b.dirty = true 
+}
+
+func (b *backlogImpl) Entries() []string {
+	entries := make([]string,0)
+	for _,e := range(b.entries) {
+		entries = append(entries,e)
 	}
-	defer f.Close()
-	_, err = f.WriteString(adif + "\n")
-	return err
+	return entries
 }
 
-func (b backlogFile) Remove(adif string) error {
-	lines, err := b.Fetch()
 
+func (b *backlogImpl) Remove(adif string) {
+	entries := make([]string, 0)
+	for _, e := range b.entries {
+		if e == adif {
+		        b.dirty = true
+			continue
+		}
+		entries = append(entries, e)
+	}
+	b.entries = entries
+}
+
+func (b *backlogImpl) Save() error {
+	if !b.dirty {
+		return nil
+	}
 	f, err := os.OpenFile(b.file, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 
 	if err != nil {
@@ -75,25 +95,22 @@ func (b backlogFile) Remove(adif string) error {
 
 	defer f.Close()
 
-	for _, line := range lines {
-		if line == adif {
-			continue
-		}
-
+	for _, line := range b.entries {
 		_, err = f.WriteString(line + "\n")
 		if err != nil {
 			return err
 		}
 	}
-
+	b.dirty = false 
 	return nil
+
 }
 
-func (b backlogFile) Fetch() ([]string, error) {
+func (b *backlogImpl) Load() error {
 	f, err := os.Open(b.file)
 	if err != nil {
 		fmt.Printf("could not open file: %s", err.Error())
-		return nil, err
+		return err
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
@@ -119,9 +136,8 @@ func (b backlogFile) Fetch() ([]string, error) {
 		lines = append(lines, adif)
 	}
 	f.Close()
-	return lines, err
+	b.entries = lines
+	b.dirty = false
+	return err
 }
 
-func (b backlogFile) Close() {
-
-}

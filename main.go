@@ -16,16 +16,6 @@ var ip = flag.String("h", "0.0.0.0", "host ip")
 var dbFile = flag.String("d", "~/.qrzlogger", "backlog file")
 var offline = flag.Bool("offline", false, "Run in offline mode")
 
-func pushToBacklog(inChan <-chan string, backlog Backlog, sendCh chan<- string) {
-	for {
-		adif := <-inChan
-		err := backlog.Store(adif)
-		if err != nil {
-			log.Printf("ERROR: storing entry in backlog: %v. \nEntry: \n%s", err, adif)
-		}
-		sendCh <- adif
-	}
-}
 
 func send(backlog Backlog, client *qrz.Client, ch <-chan string, offline bool) {
 	for {
@@ -36,30 +26,40 @@ func send(backlog Backlog, client *qrz.Client, ch <-chan string, offline bool) {
 		err := client.Upload(adif)
 		if err != nil && err != qrz.ErrAlreadyExists {
 			log.Printf("ERROR: uploading the following ADIF entry. It will remain in the backlog, and will be uploaded the next time this program is started.\n%s\n", adif)
-			log.Printf("ERROR: %s\n", err)
-		} else {
-			err = backlog.Remove(adif)
+			log.Printf("ERROR: %s\n", err)			
+			backlog.Add(adif)
+			err = backlog.Save()
 			if err != nil {
 				log.Printf("ERROR: log entry \n%s\ncould not be removed from backlog - it may be uploaded more than once as a result", adif)
-
+				log.Printf("ERROR: %s\n", err)
 			}
-
-		}
+			
+		} 
 	}
 }
 
-func processBacklog(backlog Backlog, c chan<- string) error {
-	entries, err := backlog.Fetch()
-	if err != nil {
-		return err
-	}
+func processBacklog(backlog Backlog, qrzClient *qrz.Client ) error {
+	
+	entries := backlog.Entries()
+
 	if len(entries) < 1 {
 		return nil
 	}
 
 	log.Printf("Entries found in backlog: %d.\n", len(entries))
+
 	for _, adif := range entries {
-		c <- adif
+		err := qrzClient.Upload(adif)
+		if err !=nil && err != qrz.ErrAlreadyExists {
+			log.Printf("ERROR: %v\n", err) 
+			return err
+		}
+		if err == qrz.ErrAlreadyExists {
+		log.Printf("Entry %s already exists, removing from backlog\n", adif)
+		} else {
+		log.Printf("Successfully uploaded entry : %s\n", adif)
+		}
+		backlog.Remove(adif)
 	}
 	return nil
 }
@@ -71,7 +71,7 @@ func listen(con *net.UDPConn, c chan<- string) {
 		n, _, err := con.ReadFromUDP(p)
 
 		if err != nil {
-			log.Printf("ERROR: %v", err)
+			log.Printf("ERROR: %v\n", err)
 			continue
 		}
 
@@ -108,33 +108,43 @@ func main() {
 	}
 
 	qrzClient := qrz.NewClient(key)
-	backlog, err := newBacklogFile(*dbFile)
+	backlog, err := NewBacklog(*dbFile)
 
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	defer backlog.Close()
+	err = backlog.Load()
 
-	sendCh := make(chan string)
-
-	if *offline {
-		log.Printf("Running in offline mode\n")
+	if err != nil {
+		log.Fatal(err.Error())
 	}
-	go send(backlog, qrzClient, sendCh, *offline)
 
 	if !*offline {
-		err = processBacklog(backlog, sendCh)
+		err = processBacklog(backlog, qrzClient)
+		if err != nil {
+			log.Printf("ERROR: %s\n",err.Error())
+		}
+		err = backlog.Save()
+		if err != nil {
+			log.Printf("ERROR: %s\n", err.Error())
+		}
+		
+	} else {
+		log.Printf("Running in offline mode\n")
 	}
+
+	
+	inCh := make(chan string)
+
+	go send(backlog, qrzClient, inCh, *offline)
+
 
 	if err != nil {
 		log.Printf("ERROR: could not process backlog at this time %v\n", err)
 		return
 	}
 
-	pendingCh := make(chan string)
-
-	go pushToBacklog(pendingCh, backlog, sendCh)
 
 	log.Printf("Listening on %s:%d\n", *ip, *port)
 
@@ -150,7 +160,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go listen(ser, pendingCh)
+	go listen(ser, inCh)
 
 	wg.Wait()
 }
