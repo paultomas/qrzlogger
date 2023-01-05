@@ -123,7 +123,7 @@ func main() {
 	if !*offline {
 		err = processBacklog(backlog, qrzClient)
 		if err != nil {
-			log.Printf("ERROR: %s\n",err.Error())
+			log.Printf("ERROR: could not process backlog at this time %v\n", err)			
 		}
 		err = backlog.Save()
 		if err != nil {
@@ -138,13 +138,6 @@ func main() {
 	inCh := make(chan string)
 
 	go send(backlog, qrzClient, inCh, *offline)
-
-
-	if err != nil {
-		log.Printf("ERROR: could not process backlog at this time %v\n", err)
-		return
-	}
-
 
 	log.Printf("Listening on %s:%d\n", *ip, *port)
 
