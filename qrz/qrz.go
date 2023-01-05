@@ -42,18 +42,28 @@ func (c *Client) Upload(adif string) error {
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
+
+        if err != nil {
 		log.Printf("ERROR: %v\n", err)
 		return err
 	}
-	bodyStr := string(body)
-	if !strings.Contains(bodyStr, "LOGID") {
-	   if strings.Contains(bodyStr, "&REASON=Unable to add QSO to database: duplicate") {
-               return ErrAlreadyExists
+
+        bodyStr := string(body)
+	keyValLines := strings.Split(bodyStr, "&")
+	keyVals := make(map[string]string)
+	for _, v := range keyValLines {
+	   kv := strings.Split(v, "=")
+	   if len(kv) > 1 {
+              keyVals[kv[0]] = kv[1]
 	   }
-	   return errors.New(string(body))
+	}
+	if keyVals["LOGID"] == "" {
+	     if strings.Contains(keyVals["REASON"], "duplicate") {
+                 return ErrAlreadyExists		    
+	     }
+	     log.Printf("ERROR: %s\n", bodyStr)
+	     return errors.New(keyVals["REASON"])
 	}
 	log.Printf("Logged:\n%s\n", adif)
-	log.Println(string(body))
 	return nil
 }

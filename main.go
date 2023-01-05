@@ -30,7 +30,7 @@ func send(backlog Backlog, client *qrz.Client, ch <-chan string, offline bool) {
 			backlog.Add(adif)
 			err = backlog.Save()
 			if err != nil {
-				log.Printf("ERROR: log entry \n%s\ncould not be removed from backlog - it may be uploaded more than once as a result", adif)
+				log.Printf("ERROR: log entry \n%s\ncould not be removed from backlog - it may be uploaded more than once as a result.\n", adif)
 				log.Printf("ERROR: %s\n", err)
 			}
 			
@@ -55,9 +55,9 @@ func processBacklog(backlog Backlog, qrzClient *qrz.Client ) error {
 			return err
 		}
 		if err == qrz.ErrAlreadyExists {
-		log.Printf("Entry %s already exists, removing from backlog\n", adif)
+	        	log.Printf("Entry \n%s\n already exists, removing from backlog.\n", adif)
 		} else {
-		log.Printf("Successfully uploaded entry : %s\n", adif)
+        		log.Printf("Successfully uploaded entry :\n%s\n. Removing from backlog.\n", adif)
 		}
 		backlog.Remove(adif)
 	}
