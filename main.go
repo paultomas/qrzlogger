@@ -15,6 +15,7 @@ var port = flag.Int("p", 2237, "port")
 var ip = flag.String("h", "0.0.0.0", "host ip")
 var dbFile = flag.String("d", "~/.qrzlogger", "backlog file")
 var offline = flag.Bool("offline", false, "Run in offline mode")
+var forward = flag.String("f", "localhost:2238", "forward address")
 
 
 func send(backlog Backlog, client *qrz.Client, ch <-chan string, offline bool) {
@@ -64,8 +65,15 @@ func processBacklog(backlog Backlog, qrzClient *qrz.Client ) error {
 	return nil
 }
 
-func listen(con *net.UDPConn, c chan<- string) {
-
+func listen(con *net.UDPConn, c chan<- string, forwardAddr string) {
+	var clientAddr *net.UDPAddr
+	var err error
+	if forwardAddr != "" {
+		clientAddr, err = net.ResolveUDPAddr("udp", forwardAddr)
+		if err != nil {
+			log.Printf("ERROR: %s\n", err.Error())
+		}
+	}
 	p := make([]byte, 2048)
 	for {
 		n, _, err := con.ReadFromUDP(p)
@@ -79,6 +87,13 @@ func listen(con *net.UDPConn, c chan<- string) {
 			continue
 		}
 
+		if clientAddr != nil {
+			_, err = con.WriteToUDP(p, clientAddr)
+			if err != nil {
+				log.Printf("ERROR: %s\n", err.Error())
+			}
+		}
+		
 		magic := binary.BigEndian.Uint32(p)
 		if magic != 0xadbccbda {
 			log.Printf("ERROR: Unknown magic number: %x\n", magic)
@@ -140,7 +155,11 @@ func main() {
 	go send(backlog, qrzClient, inCh, *offline)
 
 	log.Printf("Listening on %s:%d\n", *ip, *port)
-
+	if *forward != "" {
+		log.Printf("Forwarding to %s\n", *forward)
+	} else {
+		log.Printf("Forwarding disabled\n")
+	}
 	addr := net.UDPAddr{
 		Port: *port,
 		IP:   net.ParseIP(*ip),
@@ -153,7 +172,8 @@ func main() {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go listen(ser, inCh)
+	
+	go listen(ser, inCh, *forward)
 
 	wg.Wait()
 }
